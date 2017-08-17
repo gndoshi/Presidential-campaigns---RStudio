@@ -1,13 +1,9 @@
----
-output:
-  html_document: default
-  pdf_document: default
----
+
 .---
 title: "Exploratory Data Analysis - Project"
 author: "Gautam Doshi"
 date: "December 8, 2016"
-output: word_document
+output: github_document
 ---
 
 ###Purpose:
