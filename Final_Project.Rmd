@@ -1,0 +1,444 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+.---
+title: "Exploratory Data Analysis - Project"
+author: "Gautam Doshi"
+date: "December 8, 2016"
+output: word_document
+---
+
+###Purpose:
+The purpose of this project is to analyze the Financial Contributions made to Presidential candidates by the residents of North Carolina. The data for this project is available for free on http://fec.gov/disclosurep/pnational.do. 
+
+For starters, I want to see how many contributions were made to each candidate, so we will plot a histogram that allows us to measure comparatively. 
+
+**(I've also added the map of NC to point out some interesting facts about which political party was dominant, financially, over different areas within North Carolina, be sure to have a look at that!!)**
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+fincontnc <- read.csv('P00000001-NC.csv', row.names = NULL)
+qplot(x = cand_nm, data = fincontnc, geom = "bar", stat = "identity",
+      xlab = "Name", ylab = "No. of Contributions") +
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0))
+
+
+summary(fincontnc$contb_receipt_amt)
+```
+
+
+We can see in the output that there are some negative receipt amounts. This really looks like there were some residents who initiated a refund and got their money back.
+Let's find out how many refunds, may be due to multiple reasons, were made. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+length(fincontnc$contb_receipt_amt[fincontnc$contb_receipt_amt<0])
+```
+
+So we can see that there are 1357 negative values which amounts to approximately 1% of the 134,457 entries. For the sake of simplicity, I will not be omitting these negative values as they might affect the means. But since they only constitute 1% of the total entries, they will have insignificant effects on the no. of contributions. 
+
+Instead of the above jumbled up Histogram, I want to create a new variable 'party' for each observation in the data set. Since there are only 23 candidates and since I know what party they represent (information available on the website mentioned above), I used the following code to assign the cadidates as "Democrats", "Republicans" and "Others" (for sake of simplicity).
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+fincontnc$party <- NULL
+for (i in 1: dim(fincontnc)[1])
+  {
+  if (fincontnc$cand_nm[i]%in% c("Clinton, Hillary Rodham","Sanders, Bernard","Webb, James Henry Jr.","O'Malley, Martin Joseph","Lessig, Lawrence"))
+    fincontnc$party[i] <- "Democrats"
+  else if (fincontnc$cand_nm[i]%in% c("McMullin, Evan","Johnson, Gary", "Stein, Jill"))
+    fincontnc$party[i] <- "Others"
+  else (fincontnc$party[i] <- "Republicans")
+}
+
+head(fincontnc)
+```
+
+Now let's use this to see the relationship between the no. of contributions made vs. a particular amount. 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = contb_receipt_amt), data = fincontnc) + geom_point(stat = 'bin',aes(fill = ..count.., color = party), binwidth = 10) +
+  xlab("Contribution (in $)") + 
+  ylab("No. of Contributions")
+by(fincontnc$contb_receipt_amt, fincontnc$party, summary)
+  
+```
+This graph too, does not give a clear picture, but we can see that the no. of contributions made to the Democrats are very high in the low range (~$25 - median). 
+Now, let's zoom into this graph by setting an appropriate y-axis limit as 800 so we can see what's going on down there. 
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = contb_receipt_amt), data = fincontnc) + geom_point(stat = 'bin',aes(fill = ..count.., color = party), binwidth = 10) + 
+  coord_cartesian(ylim = c(0,800))+ 
+  xlab("Contribution (in $)") + 
+  ylab("No. of Contributions")
+```
+
+
+Thinking this out logically, lets filter out all the data points that are above the 95% percentlile range and facet them by their presidential party to get a very clear picture!
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = contb_receipt_amt), data = fincontnc) + geom_point(stat = 'bin',aes(fill = ..count.., shape = party, color = party), binwidth =1) + 
+  xlim(0, quantile(fincontnc$contb_receipt_amt,0.95)) + ylim(0,800) +
+  xlab("Contribution (in $)") + 
+  ylab("No. of Contributions") +
+  facet_wrap(~party)
+
+```
+
+This is much more distinguished than the above graphs. Facetting the graph definitely does give us a clearer picture of the contributions made. 
+I want to know the number of different candidates in this particular data set. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+unique(fincontnc$cand_nm)
+```
+
+So, contributions were made by the residents of NC to a total of 23 presidential candidates. Now, lets add another variable 
+
+Let's group the data by the candidate so we get a clearer picture of the contributions made to a specific candidate. Using 'dplyr', I grouped the data by the name of the candidate and their Presidential Party. Also, I am going to add a new variable "total_contb" which shows the Total Contribution made to each cadidate. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fincontnc_by_cand <- fincontnc %>% 
+  group_by(cand_nm, party) %>% 
+  summarise(mean_cont = mean(contb_receipt_amt), 
+            n = n()) %>%
+  ungroup()
+
+fincontnc_by_cand$total_contb <- fincontnc_by_cand$mean_cont * fincontnc_by_cand$n
+
+head(fincontnc_by_cand)
+```
+
+This is a good way to compare candidates to one another. Let's do an initial comparison of the mean contribution made to each of the candidates. 
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = mean_cont, y = cand_nm), data = fincontnc_by_cand) +
+  geom_point(aes(color = party), size = 2) + xlab("Mean Contribution") + 
+  ylab("Candidate Name") + geom_text(aes(label = round(mean_cont)), hjust= -0.6) + theme_minimal()
+
+```
+
+
+We can see that some Republican candidates have the highest mean contribution made while the mean conributions of candidates such as Hillary, Trump, Sanders are pretty average if you compare it to the summary statistic.
+
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+summary(fincontnc_by_cand$mean_cont)
+``` 
+
+Since the mean contribution made to the candidates does not really prove anything significant, I want to plot the No. of supporters of each candidate vs. the mean contribution. 
+
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggplot(aes(x = mean_cont, y = n), data = fincontnc_by_cand) +
+  geom_point(aes(color = cand_nm, shape=party), size =2.5) +
+  xlab("Mean Contribution") + 
+  ylab("No. of supporters")
+```
+
+
+Seeing the summary of all observations of the Contribution amount made by the residents, we can say that the range of ~$15 - $100 is the range of the 'masses'.
+
+Now, by comparing the above graph to the summary, and also by viewing the no. of supporters, we can tell that candidates such as Hillary Clinton, Bernie Sanders, Ted Cruz, Ben Carson and Donald Trump really penetrated through the 'masses'.
+
+
+Considering candidates with over $200,000 in total contributions
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+require(scales)
+ggplot(aes(x = cand_nm, y = total_contb, fill= party), 
+       data = subset(fincontnc_by_cand,fincontnc_by_cand$total_contb>200000)) + 
+  geom_bar(stat= 'identity') + 
+  xlab("Candidate Name") + ylab("Total Contribution") +
+  geom_text(aes(label= round(total_contb)), vjust = -0.75) + theme_minimal() +
+  scale_y_continuous(labels = comma) + 
+  theme(axis.text.x = element_text(angle=90, hjust=1, vjust=0))
+```
+
+As we can see, and as most of us know already, the Top 3 candidates in NC are Hillary, Trump and Bernie Sanders. 
+Hillary's leading the total contributions by a long margin.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x= mean_cont, y = n), data = fincontnc_by_cand) + 
+  geom_point(aes(color = party, size = 2.5)) + 
+  geom_line(aes(color = party)) + 
+  coord_trans(y="sqrt") + xlab("Mean Contribution to a Candidate (in $)") +
+  ylab("No. of Contributions")
+```
+
+
+I want to see how much the total amount contributed by a person to a specific candidate. Since people have contributed, on multiple occasions, to just one candidate, who they support, the following code will give a good idea of how many people contributed a certain amount to a specific candidate. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fincontnc_by_contributor <- fincontnc %>%
+  group_by(contbr_nm, cand_nm) %>%
+  summarise(total_amt_per_person = sum(contb_receipt_amt),
+            no._of_contributions = n()) %>%
+ungroup()
+
+head(fincontnc_by_contributor)
+```
+
+That is what I wanted, although not seen in the output, there is an additional column which tells us the no. of contributions made by a particular person to that candidate. 
+Let's create an initial plot with the new data set. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = total_amt_per_person), data = fincontnc_by_contributor) +
+  geom_line(stat = 'bin', aes(fill = ..count.., color = cand_nm), binwidth = 10)+
+  xlab("Total Amount per Person")
+```
+
+This plot is very shabby. We can not distinguish between who's who, since there are so many candidates.lso the graph is terribly unclear since there are 23 different candidates.
+
+Also, there are negative values that are noticed in the graph. I want to look at the summary of the total amount of contributions made per person by each candidate. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+by(fincontnc_by_contributor$total_amt_per_person,
+   fincontnc_by_contributor$cand_nm, summary)
+```
+
+There are some negative numbers because some contributions were refunded so we have negative values. 
+I want to know how many refunds were taken in the complete and initial data set. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+length(fincontnc$contb_receipt_amt[fincontnc$contb_receipt_amt < 0])
+summary(fincontnc$contb_receipt_amt[fincontnc$contb_receipt_amt < 0])
+```
+
+I am going to subset the data and develop a plot using the top 4 candidates (according to the subset output obtained from the 'fincontnc_by_cand' dataset
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+order = sort(fincontnc_by_cand$n, decreasing = TRUE)
+fincontnc_by_cand$cand_nm[fincontnc_by_cand$n %in% order[1:4]]
+```
+
+We can see that the top 4 candidates (based on the number of supporters) are: 
+Hillary Clinton, Bernie Sanders, Ted Cruz and of course, Donald Trump.
+Now, let's create a plot by filtering out the 'top 4' candidates.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = total_amt_per_person), data = subset(fincontnc_by_contributor, fincontnc_by_contributor$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"), drop = TRUE)) +
+  geom_line(stat = 'bin',aes(fill = ..count.., color = cand_nm), binwidth=10)+
+  xlab("Total Amount per Person")
+```
+
+Much better but still pretty unclear. One thing that is distinctly observable is the tall purple lines, for Donald Trump, indicating the large number of people (>1250) contributing amounts that are pretty close to the median($27) that was calculated earlier. 
+
+Let's zoom in so we get a clearer view. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(aes(x = total_amt_per_person), data = subset(fincontnc_by_contributor, fincontnc_by_contributor$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"), drop = TRUE)) +
+  geom_line(stat = 'bin',aes(fill = ..count.., color = cand_nm), binwidth=10)+
+  coord_cartesian(xlim = c(0,5000), ylim = c(0, 500)) +
+  xlab("Total Amount per Person")
+```
+
+Let's zoom in a little more to see how the graph looks like between $0-$1500 when it comes to the Total Amount per Person. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggplot(aes(x = total_amt_per_person), data = subset(fincontnc_by_contributor, fincontnc_by_contributor$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"), drop = TRUE)) +
+  geom_line(stat = 'bin',aes(fill = ..count.., color = cand_nm), binwidth=10)+
+  xlab("Total Amount per Person")+
+  coord_cartesian(xlim = c(0,1500), ylim = c(0, 500))
+```
+
+That looks much better. We can see how a high number of people have contributed to Donald Trump and Hillary Clinton on certain discrete amounts. 
+
+I want to create a new variable which just represents the year of the contribution. Using the following code we get just the result we want. 
+
+```{r  warning=FALSE, echo=TRUE, message= FALSE}
+library(stringr)
+fincontnc$contb_year <- NULL
+for (i in 1: dim(fincontnc)[1])
+  {
+  if (str_count(fincontnc$contb_receipt_dt[i], "-15") == 1)
+    fincontnc$contb_year[i] <- "2015"
+  else (fincontnc$contb_year[i] <- "2016")
+}
+```
+
+Now we have created a new variable as to what year the individual contributions were made! 
+
+We can use dplyr to group by candidate_name and the year. Summarise the average contribution made to each candidate. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+fincontnc_by_cand_and_year <- fincontnc %>% 
+  group_by(cand_nm, contb_year) %>% 
+  summarise(mean_cont = mean(contb_receipt_amt),
+            median_cont = median(contb_receipt_amt),
+            n = n()) %>%
+  ungroup()
+```
+
+Let's fire away with some plots now. 
+I'm interested in comparing the mean contributions of the 'top 4' candidates in 2015 and 2016. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggplot(aes(x = contb_year, y = mean_cont), data = subset(fincontnc_by_cand_and_year, fincontnc_by_cand_and_year$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"))) + geom_point(aes(color = cand_nm),size = 3, show.legend = TRUE) + xlab("Year") + ylab("Mean Contribution(in $)")
+```
+
+The mean contributions for each of the 'top 4' candidates were lesser in 2016 as compared to 2015. Donald Trump had the least decrease and the mean contribution made to Donald Trump in 2016 was the most in and considerably more than the other three cadidates. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggplot(aes(x = contb_year, y = n), data = subset(fincontnc_by_cand_and_year, fincontnc_by_cand_and_year$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"))) + geom_point(aes(color = cand_nm),size = 3, show.legend = TRUE) +
+  xlab("Year") + ylab("No. of Contributions")
+```
+
+This shows that the number of contributions to each of the 'top 4' candidates was considerably higher in 2016, which makes sense, if one is familiar with how the campaigns and funding the financials works. 
+
+A breakdown of the the amount raised per month of the top 2 candidates can be seen here: http://presidential-candidates.insidegov.com/compare/40-70/Hillary-Clinton-vs-Donald-Trump
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fincontnc_by_cand_and_year$total_contb <- fincontnc_by_cand_and_year$mean_cont*fincontnc_by_cand_and_year$n
+
+ggplot(aes(x = contb_year, y = total_contb), data = subset(fincontnc_by_cand_and_year, fincontnc_by_cand_and_year$cand_nm %in% c("Clinton, Hillary Rodham", "Trump, Donald J.", "Cruz, Rafael Edward 'Ted'","Sanders, Bernard"))) + geom_point(aes(color = cand_nm),size = 3, show.legend = TRUE) +
+  xlab("Year") + ylab("Total Contribution(in$)")
+```
+
+Again, all the candidates had a significant increase in the total contributions made to them which is a result of the increase of the no. of contributions too. 
+
+##Final Plots: 
+Let's just consider the numbers related just to the presidential parties. Again, I have used 'dplyr' to group the data by the 'party' and used the new data set to make the following plots which are easy to comprehend. 
+
+(For the sake of simplicity the colors are just used to distinguish parties and not the same as those shown on national TV throughout where Democrats were blue and Replicans red)
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+fincontnc_by_party <- fincontnc_by_cand %>%
+    group_by(party) %>% 
+  summarise(mean_cont = mean(mean_cont),
+            n = sum(n),
+            total_cont = sum(total_contb))
+
+ggplot(aes(x = party, y= mean_cont, fill = party), 
+             data = fincontnc_by_party) +
+  geom_bar(stat = "identity") + 
+  xlab("Party") + 
+  ylab("Mean Contribution to Party(in $)") + 
+  geom_text(aes(label= round(mean_cont)), vjust = -0.75) + theme_minimal()
+
+ggplot(aes(x = party, y= total_cont, fill= party),
+            data = fincontnc_by_party) +
+  geom_bar(stat = "identity") + 
+  xlab("Party") + 
+  ylab("Total Contribution to Party(in $)") + 
+  scale_y_continuous(labels = comma) + 
+  geom_text(aes(label= total_cont), vjust = -0.75) + theme_minimal()
+
+ggplot(aes(x = party, y= n, color = party, fill=party),
+       data = fincontnc_by_party) +
+  geom_bar(stat = "identity") + 
+  xlab("Party") + 
+  ylab("No. of contributions") + 
+  geom_text(aes(label= n), vjust = -0.75) + theme_minimal()
+```
+
+The Democratic cadidates, in general, have a higher amount of total contributions and larger number of contributions. 
+Where as the Republicans have a much greater mean amount of cotribution which can give answers to questions like "Citizens belonging to which financial 'class' realte to a particular party the most?", etc
+
+##Plotting contributions on the Map of NC by the dominant party. 
+
+Let's see which party dominated a particular location in NC. Most of the places, have contributions made to either of the 2 of 3 groups, Democrats & Republicans. 
+
+My goal is, that if residents of location X contributed 'Y dollars' to the Democrats in total and contributed '$Z' to Republicans, where Z>Y, then I'm going to plot that point on the map as the one that represents Republicans. This would show which party was dominant in which areas of NC. Let's get started..
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+library(ggmap)
+library(zipcode)
+data("zipcode")
+class(zipcode$zip)
+head(zipcode, 4)
+```
+
+'Zipcode' dataset contains the zipcodes and the associated and aggregated Latitudes and Longitudes associated with the zipcodes. This will help us plot the Lat/Lon on the Map of NC using 'ggmap' package. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+head(fincontnc$contbr_zip,5) #These are not 5-digit zips as the Zips in the Zipcode dataset. We will need to alter this since we need to merge the two datasets to get the latitudes and longitudes. 
+
+fincontnc$contbr_zip <- substr(fincontnc$contbr_zip, 1,5)
+head(fincontnc$contbr_zip, 10)
+```
+***
+New Dataset to get the latitudes and longitudes
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+new <- merge(x =fincontnc, y =zipcode, by.x = 'contbr_zip',
+                   by.y = 'zip')
+head(new, 4) #This will have the associated Lats and Lons of specific zips. Think of this as 'JOINING' two tables whilst writing a SQL query. 
+```
+***
+###Trial Map 
+I'm just going to go ahead and plot points on this trial map to see how it's happening. This is to give insight as to what to check while plotting on maps.
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggmap(get_map("North Carolina", zoom=7, color = "bw")) + 
+  geom_point(data= new, aes(x=longitude, y=latitude), col='red')
+```
+***
+From the trial map above, we can see that there are some NC residents who live in States other than NC. Let's eliminate them and have only the contributions of residents in NC. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+new <- new[new$state == "NC", ]
+
+```
+***
+Let's group the data by location and party. This will give us a better idea. 
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+new3 <- new %>% 
+  group_by(latitude,longitude,party) %>%
+  summarize(contb_receipt_amt_new = sum(contb_receipt_amt)) %>%
+  ungroup()
+
+head(new3,5)
+```
+***
+For each location, I want to see if the contributions made to democrats or 
+republicans are higher. Based on that I will color the location accordingly. 
+
+Side note: Luckily, in the data, there are MANY refunds initiated. Sure, this may cause minimal confusion early on, but luckily, these amounts are negative, so when we're looking at sums, R subtracts the refunds from the total contributions, which gives us, satisfactorily, the net result.
+
+Now, instead of complicating the above code to do it all in one go, let's create another dataset which does exactly what we want, i.e. just give us a Unique combination of Lat & Lon and tell us whether the Democrats, Republicans or Others made more contributions. 
+
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+new4 <- new3 %>%
+  group_by(latitude, longitude) %>% 
+  summarize(dominant_party = 
+              party[contb_receipt_amt_new== max(contb_receipt_amt_new)]) %>%
+  ungroup()
+
+head(new4, 4)
+```
+***
+##Final Map:
+```{r warning=FALSE, echo=TRUE, message= FALSE}
+ggmap(get_map("North Carolina", zoom=7, color = "bw")) + 
+  geom_point(data= new4, aes(x=longitude, y=latitude, color=new4$dominant_party))
+```
+
+
+
+Taking a much closer look at the map; and having lived in NC for almost 2 to 2.5 years, 
+we can see that areas, which consist of major populations or 'higher educated folk' or the 
+so-called major cities & surrounding areas of NC were in favor of the Democrats (financially speaking to say the least); for example: Raleigh (home of NC State UniversityCary included), Durham (home of Duke University), CHarlotte (UNCC), Chapel Hill (UNC:CH), Greensboro(UNCG). 
+
+I'm positive that the contributions are correlated to the votes or the divisions won by 
+Republicans/Democrats too. Unfortunately, we don't have that dataset now, but strong conclusions can be made on how Republicans controlled suburban areas in NC and possibly throughout USA, as compared to the Democrats. 
+
+
+Reflections: 
+
+This data set had over 130,000 entries on contributions made to presidential candidates by the residents of North Carolina only. I started by first understanding how the contributions were distributed across different candidates and then started to think logically and filter out only the candidates that mattered in many cases. 
+I explored the data through a different perspective after I created a new variable, through some for loops and if/else statements. 
+
+I was surprised to see the amounts contributed to Republican candidates. They were large sums and help bridge a lot of the gap between themselves and the Democrats. The latter had a huge number of supporters (contributions) though and it was easy to state that Hillary Clinton and Bernie Sanders were the 2 most popular candidates in the state of North Carolina. 
+
+Another thing that surprised me was just the 'rise' of Donald Trump. The number of contributions made to Trump in NC, increased significantly in 2016. This is of obvious importance since he won the elections held in November 2016. 
+
+I believe that there were some limitations arising from the data and the source of the data. When I started analyzing the data, I did anticipate doing some statistical analyses with the help of linear models but a lot of the data was based on factors such as 'candidate name', 'party', etc. which did not help in creating some effective linear models. This type of data is best explained with plots to deduce some inferences from them. 
+
+Also, a lot of the data columns were pretty much redundant and not used at all. Columns such as "form", "file no.", "memo_cd", etc. were not used at all. 
+
+All in all, I felt the need to use the 'dplyr' package to its full extent and make the most of all the factors I could, available ones and the ones I created, and create some plots that would help understanding the data clearly. 
+
+When it comes to improving the quality of the data set, I wish we could analyze the data of many elections taken place in the past and see which parties, in the future are more likely to gain popularity among the citizens and how significant their role would be in the upcoming election in 4, 8,etc. years. 
+
